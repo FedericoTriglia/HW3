@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Simulation of the Penetration Process</title>
+<style>
+  :root { color-scheme: light; --ink:#192333; --muted:#5c6677; --line:#dce2ea; --panel:#ffffff; --bg:#f4f6fa; --blue:#2457c5; --teal:#087e8b; --orange:#bc5d17; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.5 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+  main { max-width:1240px; padding:28px 18px 44px; margin:0 auto; }
+  h1 { font-size:clamp(1.7rem,3vw,2.45rem); line-height:1.1; margin:0 0 12px; letter-spacing:-.025em; }
+  h2 { font-size:1.18rem; margin:0 0 10px; }
+  p { margin:7px 0 12px; }
+  .lead { color:var(--muted); max-width:920px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:18px; box-shadow:0 3px 12px #19233308; }
+  .controls { display:grid; grid-template-columns:repeat(5,minmax(130px,1fr)); gap:12px; margin:22px 0 14px; align-items:end; }
+  label { display:block; font-weight:650; font-size:.9rem; margin-bottom:6px; }
+  input, select, button { width:100%; font:inherit; border:1px solid #c8d1de; border-radius:9px; padding:10px 11px; background:#fff; color:var(--ink); }
+  input:focus, select:focus, button:focus { outline:3px solid #2457c530; outline-offset:1px; }
+  button { background:var(--blue); border-color:var(--blue); color:white; font-weight:750; cursor:pointer; }
+  button:hover { filter:brightness(1.06); }
+  .hint { font-size:.82rem; color:var(--muted); margin-top:5px; }
+  .notice { padding:12px 14px; border-left:4px solid var(--teal); background:#eaf6f6; border-radius:8px; font-size:.93rem; margin:12px 0 18px; }
+  .kpis { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px; margin:14px 0; }
+  .kpi-label { font-size:.82rem; color:var(--muted); margin-bottom:4px; }
+  .kpi-value { font-size:1.35rem; font-weight:800; letter-spacing:-.02em; overflow-wrap:anywhere; }
+  .kpi-sub { color:var(--muted); font-size:.82rem; margin-top:3px; }
+  .charts { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
+  .chart-card { min-width:0; }
+  canvas { display:block; width:100%; height:270px; }
+  .small-canvas canvas { height:245px; }
+  .chart-note { color:var(--muted); font-size:.82rem; margin-top:7px; }
+  .table-wrap { overflow-x:auto; }
+  table { width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums; }
+  th,td { text-align:right; padding:10px 9px; border-bottom:1px solid var(--line); white-space:nowrap; }
+  th:first-child,td:first-child { text-align:left; }
+  th { color:#465267; font-size:.84rem; }
+  .section { margin-top:16px; }
+  .equation { padding:12px; border-radius:8px; background:#f5f7fb; font-family:ui-monospace,SFMono-Regular,Consolas,monospace; overflow-wrap:anywhere; }
+  .foot { font-size:.85rem; color:var(--muted); margin-top:20px; }
+  .tag { display:inline-block; border-radius:999px; padding:3px 9px; background:#edf1f7; font-size:.78rem; font-weight:700; margin-bottom:7px; }
+  @media(max-width:850px) { .controls { grid-template-columns:repeat(2,minmax(0,1fr)); } .kpis { grid-template-columns:repeat(2,minmax(0,1fr)); } .charts { grid-template-columns:1fr; } }
+  @media(max-width:430px) { main { padding:20px 12px 30px; } .controls { grid-template-columns:1fr 1fr; } .card { padding:14px; } canvas { height:230px; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <span class="tag">Homework · Probability and Simulation</span>
+    <h1>Stochastic Penetration Process</h1>
+    <p class="lead">Monte Carlo comparison of Bernoulli and Rademacher increments: cumulative trajectories, the distribution of the total, the sample average, and the normalized total.</p>
+  </header>
+
+  <section class="card" aria-label="Simulation parameters">
+    <h2>Parameters</h2>
+    <div class="controls">
+      <div>
+        <label for="model">Increment model</label>
+        <select id="model"><option value="bernoulli">Bernoulli (0 / 1)</option><option value="rademacher">Rademacher (−1 / +1)</option></select>
+      </div>
+      <div>
+        <label for="n">Systems / steps n</label>
+        <input id="n" type="number" min="10" max="1000" step="10" value="100">
+        <div class="hint">Range: 10–1000</div>
+      </div>
+      <div>
+        <label for="m">Attackers m</label>
+        <input id="m" type="number" min="1" max="20" step="1" value="4">
+        <div class="hint">Range: 1–20</div>
+      </div>
+      <div>
+        <label for="reps">Monte Carlo replications</label>
+        <input id="reps" type="number" min="100" max="2000" step="100" value="500">
+        <div class="hint">More replications = more stable histograms</div>
+      </div>
+      <div>
+        <label for="q">Per-attacker probability q</label>
+        <input id="q" type="number" min="0.001" max="0.999" step="0.01" value="0.15">
+        <div class="hint">Used only in the Bernoulli model</div>
+      </div>
+    </div>
+    <button id="run">Run simulation</button>
+    <div class="notice" id="modelNote" aria-live="polite"></div>
+  </section>
+
+  <section class="kpis" aria-label="Key results">
+    <div class="card"><div class="kpi-label">Per-system probability p</div><div class="kpi-value" id="pValue">—</div><div class="kpi-sub" id="pSub">—</div></div>
+    <div class="card"><div class="kpi-label">Theoretical mean of the observed total</div><div class="kpi-value" id="meanValue">—</div><div class="kpi-sub" id="meanSub">—</div></div>
+    <div class="card"><div class="kpi-label">Theoretical variance of the observed total</div><div class="kpi-value" id="varValue">—</div><div class="kpi-sub" id="varSub">—</div></div>
+    <div class="card"><div class="kpi-label">Empirical mean of the aggregate total</div><div class="kpi-value" id="empValue">—</div><div class="kpi-sub" id="empSub">—</div></div>
+  </section>
+
+  <section class="charts">
+    <div class="card chart-card">
+      <h2>Cumulative trajectories</h2>
+      <canvas id="paths" aria-label="Cumulative trajectory plot"></canvas>
+      <div class="chart-note" id="pathNote"></div>
+    </div>
+    <div class="card chart-card">
+      <h2>Distribution of the total Sₙ</h2>
+      <canvas id="histTotal" aria-label="Histogram of the total"></canvas>
+      <div class="chart-note" id="totalNote"></div>
+    </div>
+    <div class="card chart-card small-canvas">
+      <h2>Distribution of the average Sₙ / n</h2>
+      <canvas id="histAvg" aria-label="Histogram of the average"></canvas>
+      <div class="chart-note">The average tends to the expected value of the increment, which is not necessarily zero.</div>
+    </div>
+    <div class="card chart-card small-canvas">
+      <h2>Distribution of the normalized total Sₙ / √n</h2>
+      <canvas id="histNorm" aria-label="Histogram of the normalized total"></canvas>
+      <div class="chart-note" id="normNote"></div>
+    </div>
+  </section>
+
+  <section class="card section">
+    <h2>Theory vs. simulation</h2>
+    <p id="tableIntro">—</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Quantity</th><th>Theoretical mean</th><th>Theoretical variance</th><th>Empirical mean</th><th>Empirical variance</th></tr></thead>
+        <tbody id="statsBody"></tbody>
+      </table>
+    </div>
+    <div class="section">
+      <h2>Aggregate of the m attackers</h2>
+      <p id="aggregateText">—</p>
+      <div class="equation" id="aggregateEquation">—</div>
+    </div>
+  </section>
+  <p class="foot">Methodological note: the histograms are Monte Carlo estimates, so they vary slightly with each run. The theoretical formulas help distinguish random fluctuations from the effects of n and m. In the Bernoulli model, q is the probability that a single attacker successfully penetrates a single system.</p>
+</main>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const palette = ['#2457c5','#087e8b','#bc5d17','#7b4ab1','#36853b','#c23d70','#606b7a','#ae8b00'];
+  const fmt = (x, digits=3) => Number.isFinite(x) ? x.toLocaleString('en-US',{maximumFractionDigits:digits, minimumFractionDigits:0}) : '—';
+  const clamp = (x,lo,hi) => Math.min(hi,Math.max(lo,x));
+  const mean = a => a.length ? a.reduce((s,x)=>s+x,0)/a.length : NaN;
+  const variance = a => { if (!a.length) return NaN; const mu=mean(a); return a.reduce((s,x)=>s+(x-mu)**2,0)/a.length; };
+  const normalPdf = x => Math.exp(-x*x/2)/Math.sqrt(2*Math.PI);
+
+  function dimensions(canvas) {
+    const rect=canvas.getBoundingClientRect();
+    const dpr=window.devicePixelRatio||1;
+    canvas.width=Math.max(300,Math.floor(rect.width*dpr));
+    canvas.height=Math.floor((parseFloat(getComputedStyle(canvas).height)||260)*dpr);
+    const ctx=canvas.getContext('2d');
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    return {ctx,w:canvas.width/dpr,h:canvas.height/dpr};
+  }
+  function axes(ctx,w,h,plot, yMin,yMax, yLabel='frequency') {
+    ctx.clearRect(0,0,w,h); ctx.font='11px system-ui'; ctx.fillStyle='#5c6677'; ctx.strokeStyle='#e4e8ef'; ctx.lineWidth=1;
+    for(let k=0;k<=4;k++) {
+      const y=plot.y+plot.h*k/4; ctx.beginPath();ctx.moveTo(plot.x,y);ctx.lineTo(plot.x+plot.w,y);ctx.stroke();
+      const val=yMax-(yMax-yMin)*k/4;ctx.textAlign='right';ctx.fillText(fmt(val,1),plot.x-7,y+4);
+    }
+    ctx.strokeStyle='#9aa6b7'; ctx.beginPath();ctx.moveTo(plot.x,plot.y);ctx.lineTo(plot.x,plot.y+plot.h);ctx.lineTo(plot.x+plot.w,plot.y+plot.h);ctx.stroke();
+  }
+  function drawPaths(canvas, paths, model, n) {
+    const {ctx,w,h}=dimensions(canvas); const plot={x:48,y:14,w:w-64,h:h-48};
+    const vals=paths.flat(); let lo=Math.min(0,...vals), hi=Math.max(1,...vals);
+    if(lo===hi){lo-=1;hi+=1;} const pad=(hi-lo)*.08;lo-=pad;hi+=pad;
+    axes(ctx,w,h,plot,lo,hi);
+    const xAt=i=>plot.x+plot.w*i/n, yAt=v=>plot.y+plot.h*(hi-v)/(hi-lo);
+    paths.forEach((p,j)=>{ctx.strokeStyle=palette[j%palette.length];ctx.lineWidth=1.7;ctx.beginPath();p.forEach((v,i)=>{i?ctx.lineTo(xAt(i),yAt(v)):ctx.moveTo(xAt(i),yAt(v));});ctx.stroke();});
+    ctx.fillStyle='#5c6677';ctx.textAlign='center';ctx.fillText('step / system i',plot.x+plot.w/2,h-8);
+  }
+  function drawHist(canvas, values, options={}) {
+    const {ctx,w,h}=dimensions(canvas); const plot={x:48,y:16,w:w-64,h:h-48};
+    const min0=Math.min(...values), max0=Math.max(...values);
+    let lo=min0,hi=max0; if(hi-lo<1e-8){lo-=.5;hi+=.5;}
+    const bins=clamp(Math.round(Math.sqrt(values.length)*1.25),12,48); const width=(hi-lo)/bins;
+    const counts=Array(bins).fill(0);
+    values.forEach(v=>counts[clamp(Math.floor((v-lo)/width),0,bins-1)]++);
+    const maxCount=Math.max(...counts,1);
+    const yMax=maxCount*1.18;
+    axes(ctx,w,h,plot,0,yMax,'count');
+    const barW=plot.w/bins;
+    ctx.fillStyle='#7ea0e5';
+    counts.forEach((c,i)=>{const bh=(c/yMax)*plot.h;ctx.fillRect(plot.x+i*barW+1,plot.y+plot.h-bh,Math.max(1,barW-2),bh);});
+    if(options.normal) {
+      // Overlay normal N(0,1) density translated into expected histogram counts.
+      ctx.strokeStyle='#c05a16';ctx.lineWidth=2.5;ctx.beginPath();
+      for(let px=0;px<=plot.w;px++){
+        const x=lo+(px/plot.w)*(hi-lo); const expected=normalPdf(x)*values.length*width;
+        const yy=plot.y+plot.h-(expected/yMax)*plot.h;
+        px===0?ctx.moveTo(plot.x+px,yy):ctx.lineTo(plot.x+px,yy);
+      }
+      ctx.stroke();
+      ctx.fillStyle='#c05a16';ctx.textAlign='right';ctx.font='11px system-ui';ctx.fillText('Theoretical N(0,1)',plot.x+plot.w,11);
+    }
+    ctx.fillStyle='#5c6677';ctx.font='11px system-ui';ctx.textAlign='center';
+    ctx.fillText(fmt(lo,2),plot.x, h-25);ctx.fillText(fmt((lo+hi)/2,2),plot.x+plot.w/2,h-25);ctx.fillText(fmt(hi,2),plot.x+plot.w,h-25);
+  }
+  function setStats(rows) {
+    $('statsBody').innerHTML=rows.map(r=>`<tr><td>${r.name}</td><td>${fmt(r.tm)}</td><td>${fmt(r.tv)}</td><td>${fmt(r.em)}</td><td>${fmt(r.ev)}</td></tr>`).join('');
+  }
+  function runSimulation() {
+    const model=$('model').value;
+    const n=clamp(parseInt($('n').value||100,10),10,1000);
+    const m=clamp(parseInt($('m').value||1,10),1,20);
+    const reps=clamp(parseInt($('reps').value||500,10),100,2000);
+    const q=clamp(parseFloat($('q').value||0.15),0.001,0.999);
+    $('n').value=n;$('m').value=m;$('reps').value=reps;$('q').value=q;
+    $('q').disabled=model==='rademacher';
+    let p=NaN;
+    if(model==='bernoulli') p=1-Math.pow(1-q,m);
+    const firstPaths=[];
+    const totals=[], avgs=[], norms=[], aggregateTotals=[];
+    if(model==='bernoulli') {
+      $('modelNote').textContent=`Aggregate Bernoulli model: each system counts as 1 if at least one of the ${m} attackers succeeds. If each attacker has success probability q=${fmt(q,3)}, the effective probability is pₘ = 1 − (1 − q)^m = ${fmt(p,4)}. Increments across systems are independent.`;
+      for(let r=0;r<reps;r++){
+        let s=0; const path=[0];
+        for(let i=0;i<n;i++) {const x=Math.random()<p?1:0;s+=x;path.push(s);}
+        totals.push(s);avgs.push(s/n);norms.push(s/Math.sqrt(n));aggregateTotals.push(s);
+        if(r<6) firstPaths.push(path);
+      }
+      $('pValue').textContent=fmt(p,4);$('pSub').textContent='pₘ = 1 − (1 − q)^m';
+      $('meanValue').textContent=fmt(n*p);$('meanSub').textContent='E[Sₙ] = n pₘ';
+      $('varValue').textContent=fmt(n*p*(1-p));$('varSub').textContent='Var(Sₙ) = n pₘ(1 − pₘ)';
+      $('empValue').textContent=fmt(mean(aggregateTotals));$('empSub').textContent=`mean over ${reps} replications; theoretical value ${fmt(n*p)}`;
+      $('pathNote').textContent='The first 6 replications of cumulative system penetration are shown.';
+      $('totalNote').textContent=`Expected value ${fmt(n*p)}, standard deviation ${fmt(Math.sqrt(n*p*(1-p)))}.`;
+      $('normNote').textContent='For pₘ > 0, Sₙ/√n does not converge to N(0,1): its mean grows like pₘ√n. The CLT requires centering and standardization.';
+      $('tableIntro').textContent='In the Bernoulli model, Sₙ counts systems compromised at least once. Its distribution is Binomial(n, pₘ).';
+      setStats([
+        {name:'Total Sₙ',tm:n*p,tv:n*p*(1-p),em:mean(totals),ev:variance(totals)},
+        {name:'Average Sₙ/n',tm:p,tv:p*(1-p)/n,em:mean(avgs),ev:variance(avgs)},
+        {name:'Normalized Sₙ/√n',tm:p*Math.sqrt(n),tv:p*(1-p),em:mean(norms),ev:variance(norms)}
+      ]);
+      $('aggregateText').textContent=`The aggregate is the number of distinct systems penetrated at least once by the m attackers. As m increases, pₘ and the expected total do not decrease; with q fixed, pₘ → 1 as m → ∞.`;
+      $('aggregateEquation').textContent=`E[Sₙ] = n[1 − (1 − q)^m] = ${fmt(n*p)};  Var(Sₙ) = n pₘ(1 − pₘ) = ${fmt(n*p*(1-p))}.`;
+      drawPaths($('paths'),firstPaths,model,n);
+    } else {
+      const keepPaths=Math.min(m,8);
+      $('modelNote').textContent=`Rademacher model: each attacker j produces an independent contribution Xᵢ⁽ʲ⁾ ∈ {−1,+1} for each system, with equal probability. The three requested distributions are estimated for individual attackers; the aggregate total instead sums all m attackers. In this model, m does not change the distribution of an individual Sₙ.`;
+      for(let r=0;r<reps;r++) {
+        let agg=0;
+        for(let j=0;j<m;j++) {
+          let s=0;const path=[0];
+          for(let i=0;i<n;i++) {const x=Math.random()<0.5?1:-1;s+=x;if(r===0&&j<keepPaths)path.push(s);}
+          totals.push(s);avgs.push(s/n);norms.push(s/Math.sqrt(n));agg+=s;
+          if(r===0&&j<keepPaths)firstPaths.push(path);
+        }
+        aggregateTotals.push(agg);
+      }
+      $('pValue').textContent='0.5 / 0.5';$('pSub').textContent='P(Xᵢ = −1) = P(Xᵢ = +1)';
+      $('meanValue').textContent='0';$('meanSub').textContent='E[Sₙ] per attacker = 0';
+      $('varValue').textContent=fmt(n);$('varSub').textContent='Var(Sₙ) per attacker = n';
+      $('empValue').textContent=fmt(mean(aggregateTotals));$('empSub').textContent=`mean of Tₙ,ₘ over ${reps} replications; theoretical value 0`;
+      $('pathNote').textContent=`Trajectories of the first ${keepPaths} attackers in the first replication are shown.`;
+      $('totalNote').textContent=`For a single attacker: mean 0 and variance n=${n}. Standard deviation √n=${fmt(Math.sqrt(n))}.`;
+      $('normNote').textContent='The orange curve is the N(0,1) density. As n increases, the histogram of Sₙ/√n approaches it (CLT).';
+      $('tableIntro').textContent=`The table statistics are for individual attackers, based on ${reps*m} independent trajectories. The aggregate of m attackers has variance mn.`;
+      setStats([
+        {name:'Total Sₙ (individual)',tm:0,tv:n,em:mean(totals),ev:variance(totals)},
+        {name:'Average Sₙ/n (individual)',tm:0,tv:1/n,em:mean(avgs),ev:variance(avgs)},
+        {name:'Normalized Sₙ/√n (individual)',tm:0,tv:1,em:mean(norms),ev:variance(norms)}
+      ]);
+      $('aggregateText').textContent='The total Tₙ,ₘ sums mn independent Rademacher contributions. Its standard deviation grows like √(mn); dividing by mn, the aggregate average tends to zero. Dividing by √(mn) gives the scaling used in the Central Limit Theorem.';
+      $('aggregateEquation').textContent=`Tₙ,ₘ = Σⱼ₌₁ᵐ Σᵢ₌₁ⁿ Xᵢ⁽ʲ⁾;  E[Tₙ,ₘ]=0;  Var(Tₙ,ₘ)=mn=${n*m};  Var(Tₙ,ₘ/(mn))=1/(mn)=${fmt(1/(n*m))}.`;
+      drawPaths($('paths'),firstPaths,model,n);
+    }
+    drawHist($('histTotal'),totals);
+    drawHist($('histAvg'),avgs);
+    drawHist($('histNorm'),norms,{normal:model==='rademacher'});
+  }
+  $('run').addEventListener('click',runSimulation);
+  $('model').addEventListener('change',runSimulation);
+  window.addEventListener('resize',()=>runSimulation());
+  runSimulation();
+})();
+</script>
+</body>
+</html>
